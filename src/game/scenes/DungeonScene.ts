@@ -605,6 +605,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private createPopupButton(x: number, y: number, text: string, color: number, callback: () => void): void {
+    // Button background
     const bg = this.add.graphics();
     bg.fillStyle(color, 0.9);
     bg.fillRoundedRect(x - 60, y - 18, 120, 36, 8);
@@ -612,6 +613,7 @@ export class DungeonScene extends Phaser.Scene {
     bg.setDepth(302);
     this.popupElements.push(bg);
     
+    // Button label
     const label = this.add.text(x, y, text, {
       fontFamily: 'Georgia, serif',
       fontSize: '14px',
@@ -622,13 +624,14 @@ export class DungeonScene extends Phaser.Scene {
     label.setDepth(303);
     this.popupElements.push(label);
     
-    const zone = this.add.zone(x, y, 120, 36);
-    zone.setScrollFactor(0);
-    zone.setDepth(304);
-    zone.setInteractive({ useHandCursor: true });
-    this.popupElements.push(zone);
+    // Interactive rectangle instead of zone for better click detection
+    const hitArea = this.add.rectangle(x, y, 120, 36, 0xffffff, 0);
+    hitArea.setScrollFactor(0);
+    hitArea.setDepth(305);
+    hitArea.setInteractive({ useHandCursor: true });
+    this.popupElements.push(hitArea);
     
-    zone.on('pointerover', () => {
+    hitArea.on('pointerover', () => {
       bg.clear();
       bg.fillStyle(color, 1);
       bg.fillRoundedRect(x - 60, y - 18, 120, 36, 8);
@@ -636,13 +639,21 @@ export class DungeonScene extends Phaser.Scene {
       bg.strokeRoundedRect(x - 60, y - 18, 120, 36, 8);
     });
     
-    zone.on('pointerout', () => {
+    hitArea.on('pointerout', () => {
       bg.clear();
       bg.fillStyle(color, 0.9);
       bg.fillRoundedRect(x - 60, y - 18, 120, 36, 8);
     });
     
-    zone.on('pointerdown', callback);
+    hitArea.on('pointerdown', () => {
+      // Visual feedback
+      bg.clear();
+      bg.fillStyle(0xffffff, 0.3);
+      bg.fillRoundedRect(x - 60, y - 18, 120, 36, 8);
+      
+      // Execute callback after brief delay for visual feedback
+      this.time.delayedCall(50, callback);
+    });
   }
 
   private clearPopup(): void {
@@ -671,6 +682,12 @@ export class DungeonScene extends Phaser.Scene {
   private enterDen(portal: DenPortal): void {
     this.clearPopup();
     this.showingPopup = false;
+    
+    // Play portal enter sound
+    const sounds = this.game.registry.get('sounds');
+    if (sounds && sounds.portalEnter) {
+      try { sounds.portalEnter(); } catch (e) {}
+    }
     
     // Save enemy DATA (not objects!) for restoration
     const enemyData = this.enemies.map(enemy => ({

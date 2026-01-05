@@ -33,6 +33,9 @@ export class Enemy extends Phaser.GameObjects.Container {
   private hitFlash!: Phaser.GameObjects.Rectangle;
   private stateIndicator!: Phaser.GameObjects.Text;
   
+  // Sprite type (randomly chosen between orc, goblin, slime)
+  private spriteType: 'orc' | 'goblin' | 'slime' = 'orc';
+  
   // AI State
   private currentState: AIState = 'idle';
   private target: Player | null = null;
@@ -56,6 +59,20 @@ export class Enemy extends Phaser.GameObjects.Container {
     
     this.enemyData = config.data;
     this.stats = { ...config.data.stats };
+    
+    // Randomly choose sprite type (bosses always orc, others random)
+    if (config.data.type === 'boss') {
+      this.spriteType = 'orc';
+    } else {
+      const rand = Math.random();
+      if (rand < 0.33) {
+        this.spriteType = 'orc';
+      } else if (rand < 0.66) {
+        this.spriteType = 'goblin';
+      } else {
+        this.spriteType = 'slime';
+      }
+    }
     
     // Create visuals
     this.createVisuals();
@@ -81,16 +98,38 @@ export class Enemy extends Phaser.GameObjects.Container {
    * Create visual components
    */
   private createVisuals(): void {
+    const isBoss = this.enemyData.type === 'boss';
+    let size = isBoss ? 48 : 36;
+    if (this.spriteType === 'goblin') size = 28;
+    if (this.spriteType === 'slime') size = 32;
+    
     // Shadow
-    this.shadowSprite = this.scene.add.ellipse(0, 12, 22, 8, 0x000000, 0.3);
+    this.shadowSprite = this.scene.add.ellipse(0, 14, size * 0.7, 10, 0x000000, 0.3);
     this.add(this.shadowSprite);
     
-    // Main sprite (use graphics as placeholder)
-    const isBoss = this.enemyData.type === 'boss';
-    const size = isBoss ? 48 : 32;
-    
-    // Check if texture exists, otherwise create placeholder
-    if (this.scene.textures.exists(this.enemyData.sprite)) {
+    // Main sprite - choose based on spriteType
+    if (this.spriteType === 'slime' && this.scene.textures.exists('slime_frame_0')) {
+      // Use slime sprite
+      this.sprite = this.scene.add.sprite(0, -8, 'slime_frame_0');
+      this.sprite.setDisplaySize(size * 1.5, size * 1.5);
+      if (this.scene.anims.exists('slime_idle')) {
+        (this.sprite as Phaser.GameObjects.Sprite).play('slime_idle');
+      }
+    } else if (this.spriteType === 'goblin' && this.scene.textures.exists('goblin_frame_0')) {
+      // Use goblin sprite
+      this.sprite = this.scene.add.sprite(0, -4, 'goblin_frame_0');
+      this.sprite.setDisplaySize(size * 1.2, size * 1.2);
+      if (this.scene.anims.exists('goblin_idle')) {
+        (this.sprite as Phaser.GameObjects.Sprite).play('goblin_idle');
+      }
+    } else if (this.scene.textures.exists('monster_frame_0')) {
+      // Use orc/monster sprite
+      this.sprite = this.scene.add.sprite(0, -4, 'monster_frame_0');
+      this.sprite.setDisplaySize(size * 1.4, size * 1.4);
+      if (this.scene.anims.exists('monster_idle')) {
+        (this.sprite as Phaser.GameObjects.Sprite).play('monster_idle');
+      }
+    } else if (this.scene.textures.exists(this.enemyData.sprite)) {
       this.sprite = this.scene.add.sprite(0, 0, this.enemyData.sprite);
     } else {
       // Create placeholder graphic
@@ -117,12 +156,12 @@ export class Enemy extends Phaser.GameObjects.Container {
     
     // Health bar
     this.healthBar = this.scene.add.graphics();
-    this.healthBar.setPosition(0, -size/2 - 8);
+    this.healthBar.setPosition(0, -size/2 - 12);
     this.add(this.healthBar);
     this.updateHealthBar();
     
     // State indicator (debug, hidden by default)
-    this.stateIndicator = this.scene.add.text(0, -size/2 - 20, '', {
+    this.stateIndicator = this.scene.add.text(0, -size/2 - 24, '', {
       fontSize: '10px',
       color: '#ffffff',
     });
@@ -236,11 +275,30 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Get animation key prefix based on sprite type
+   */
+  private getAnimPrefix(): string {
+    if (this.spriteType === 'slime') return 'slime';
+    if (this.spriteType === 'goblin') return 'goblin';
+    return 'monster';
+  }
+
+  /**
    * Idle state - wait and look around
    */
   private updateIdle(distanceToPlayer: number): void {
     const body = this.body as Phaser.Physics.Arcade.Body;
     if (body) body.setVelocity(0, 0);
+    
+    // Play idle animation based on sprite type
+    const prefix = this.getAnimPrefix();
+    if (this.sprite instanceof Phaser.GameObjects.Sprite && 
+        this.scene.anims.exists(`${prefix}_idle`)) {
+      const currentAnim = this.sprite.anims.currentAnim?.key;
+      if (currentAnim !== `${prefix}_idle` && currentAnim !== `${prefix}_attack`) {
+        this.sprite.play(`${prefix}_idle`);
+      }
+    }
     
     // Check for player in detection range
     if (distanceToPlayer <= this.stats.detectionRange) {
@@ -369,9 +427,18 @@ export class Enemy extends Phaser.GameObjects.Container {
       Math.sin(angle) * speed
     );
     
-    // Face movement direction
+    // Face movement direction and play walk animation
     if (this.sprite instanceof Phaser.GameObjects.Sprite) {
       this.sprite.setFlipX(targetX < this.x);
+      
+      // Play walk animation based on sprite type
+      const prefix = this.getAnimPrefix();
+      if (this.scene.anims.exists(`${prefix}_walk`)) {
+        const currentAnim = this.sprite.anims.currentAnim?.key;
+        if (currentAnim !== `${prefix}_walk` && currentAnim !== `${prefix}_attack`) {
+          this.sprite.play(`${prefix}_walk`);
+        }
+      }
     }
   }
 
@@ -384,6 +451,18 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.isAttacking = true;
     this.attackCooldown = this.stats.attackCooldown;
     
+    // Play attack animation based on sprite type
+    const prefix = this.getAnimPrefix();
+    if (this.sprite instanceof Phaser.GameObjects.Sprite && 
+        this.scene.anims.exists(`${prefix}_attack`)) {
+      this.sprite.play(`${prefix}_attack`);
+      this.sprite.once('animationcomplete', () => {
+        if (this.scene.anims.exists(`${prefix}_idle`)) {
+          (this.sprite as Phaser.GameObjects.Sprite).play(`${prefix}_idle`);
+        }
+      });
+    }
+    
     // Attack animation - lunge forward
     const angle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
     const lungeX = Math.cos(angle) * 10;
@@ -393,7 +472,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.scene.tweens.add({
       targets: this.sprite,
       x: lungeX,
-      y: lungeY,
+      y: lungeY - 4, // Maintain vertical offset
       duration: 100,
       yoyo: true,
       ease: 'Power2',
@@ -409,6 +488,11 @@ export class Enemy extends Phaser.GameObjects.Container {
       },
       onComplete: () => {
         this.isAttacking = false;
+        // Reset sprite position
+        if (this.sprite instanceof Phaser.GameObjects.Sprite) {
+          this.sprite.x = 0;
+          this.sprite.y = -4;
+        }
         
         // Boss might retreat after attack
         if (this.enemyData.type === 'boss' && this.enemyData.behaviors.includes('retreat')) {
@@ -574,10 +658,27 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Play a sound effect
+   */
+  private playSound(soundName: string): void {
+    const sounds = this.scene.game.registry.get('sounds');
+    if (sounds && sounds[soundName]) {
+      try {
+        sounds[soundName]();
+      } catch (e) {
+        // Audio context might not be ready
+      }
+    }
+  }
+
+  /**
    * Handle enemy death
    */
   private die(): void {
     this.isDead = true;
+    
+    // Play death sound
+    this.playSound('enemyDeath');
     
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0, 0);
@@ -586,18 +687,36 @@ export class Enemy extends Phaser.GameObjects.Container {
     // Emit death event with loot table
     this.scene.game.events.emit(GAME_EVENTS.ENEMY_DIED, this, this.enemyData.lootTable);
     
-    // Death animation
-    this.scene.tweens.add({
-      targets: this,
-      alpha: 0,
-      scale: 0.5,
-      angle: 180,
-      duration: 400,
-      ease: 'Power2',
-      onComplete: () => {
-        this.destroy();
-      },
-    });
+    // Play death animation if available (only orcs have death animation)
+    const prefix = this.getAnimPrefix();
+    if (this.sprite instanceof Phaser.GameObjects.Sprite && 
+        this.scene.anims.exists(`${prefix}_death`)) {
+      this.sprite.play(`${prefix}_death`);
+      this.sprite.once('animationcomplete', () => {
+        // Fade out after death animation
+        this.scene.tweens.add({
+          targets: this,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            this.destroy();
+          },
+        });
+      });
+    } else {
+      // Fallback death animation
+      this.scene.tweens.add({
+        targets: this,
+        alpha: 0,
+        scale: 0.5,
+        angle: 180,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => {
+          this.destroy();
+        },
+      });
+    }
     
     // Particles
     this.createDeathParticles();
@@ -607,13 +726,23 @@ export class Enemy extends Phaser.GameObjects.Container {
    * Create death particle effect
    */
   private createDeathParticles(): void {
-    const colors = this.enemyData.type === 'boss' ? [0x9944aa, 0x6622aa] : [0xaa4444, 0x662222];
+    // Different colors based on enemy type and sprite
+    let colors: number[];
+    if (this.enemyData.type === 'boss') {
+      colors = [0x9944aa, 0x6622aa];
+    } else if (this.spriteType === 'slime') {
+      colors = [0x44ff88, 0x22aa44]; // Bright green for slimes
+    } else if (this.spriteType === 'goblin') {
+      colors = [0x44aa44, 0x226622]; // Dark green for goblins
+    } else {
+      colors = [0xaa4444, 0x662222]; // Red for orcs
+    }
     
     for (let i = 0; i < 8; i++) {
       const particle = this.scene.add.graphics();
       particle.setPosition(this.x, this.y);
       particle.fillStyle(colors[i % 2]);
-      particle.fillCircle(0, 0, 4);
+      particle.fillCircle(0, 0, this.spriteType === 'slime' ? 6 : 4);
       
       const angle = (i / 8) * Math.PI * 2;
       const distance = 30 + Math.random() * 20;

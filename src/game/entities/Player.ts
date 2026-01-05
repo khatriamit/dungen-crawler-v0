@@ -88,11 +88,20 @@ export class Player extends Phaser.GameObjects.Container {
    */
   private createVisuals(texture: string): void {
     // Shadow under player
-    this.shadowSprite = this.scene.add.ellipse(0, 12, 24, 10, 0x000000, 0.3);
+    this.shadowSprite = this.scene.add.ellipse(0, 18, 32, 12, 0x000000, 0.4);
     this.add(this.shadowSprite);
     
-    // Main sprite
-    this.sprite = this.scene.add.sprite(0, 0, texture);
+    // Main sprite - use hero frames if available
+    if (this.scene.textures.exists('hero_frame_0')) {
+      this.sprite = this.scene.add.sprite(0, -8, 'hero_frame_0');
+      this.sprite.setDisplaySize(48, 56);
+      // Start idle animation if it exists
+      if (this.scene.anims.exists('hero_idle')) {
+        this.sprite.play('hero_idle');
+      }
+    } else {
+      this.sprite = this.scene.add.sprite(0, 0, texture);
+    }
     this.sprite.setOrigin(0.5, 0.5);
     this.add(this.sprite);
     
@@ -156,17 +165,24 @@ export class Player extends Phaser.GameObjects.Container {
     
     body.setVelocity(velocityX * speed, velocityY * speed);
     
-    // Update facing direction
-    if (Math.abs(velocityX) > Math.abs(velocityY)) {
-      this.facing = velocityX > 0 ? 'right' : 'left';
-    } else if (velocityY !== 0) {
-      this.facing = velocityY > 0 ? 'down' : 'up';
+    // Update facing direction - only track left/right for sprite flip
+    // Keep separate facing for attack direction
+    if (velocityX > 0) {
+      this.facing = 'right';
+    } else if (velocityX < 0) {
+      this.facing = 'left';
+    } else if (velocityY > 0) {
+      this.facing = 'down';
+    } else if (velocityY < 0) {
+      this.facing = 'up';
     }
     
     this.isMoving = velocityX !== 0 || velocityY !== 0;
     
-    // Flip sprite based on direction
-    this.sprite.setFlipX(this.facing === 'left');
+    // Only flip sprite for left/right movement, not up/down
+    if (velocityX !== 0) {
+      this.sprite.setFlipX(velocityX < 0);
+    }
   }
 
   /**
@@ -218,16 +234,26 @@ export class Player extends Phaser.GameObjects.Container {
    * Play attack animation
    */
   private playAttackAnimation(): void {
+    // Play attack animation if using hero frames
+    if (this.scene.textures.exists('hero_frame_0') && this.scene.anims.exists('hero_attack')) {
+      this.sprite.play('hero_attack');
+      this.sprite.once('animationcomplete', () => {
+        if (this.scene.anims.exists('hero_idle')) {
+          this.sprite.play('hero_idle');
+        }
+      });
+    }
+    
     // Quick lunge in facing direction
     const lungeDistance = 8;
     let lungeX = 0;
-    let lungeY = 0;
+    let lungeY = -8; // Base offset for hero sprite
     
     switch (this.facing) {
       case 'left': lungeX = -lungeDistance; break;
       case 'right': lungeX = lungeDistance; break;
-      case 'up': lungeY = -lungeDistance; break;
-      case 'down': lungeY = lungeDistance; break;
+      case 'up': lungeY = -lungeDistance - 8; break;
+      case 'down': lungeY = lungeDistance - 8; break;
     }
     
     // Create slash effect
@@ -241,6 +267,10 @@ export class Player extends Phaser.GameObjects.Container {
       duration: 80,
       yoyo: true,
       ease: 'Power2',
+      onComplete: () => {
+        this.sprite.x = 0;
+        this.sprite.y = -8;
+      }
     });
   }
 
@@ -298,6 +328,9 @@ export class Player extends Phaser.GameObjects.Container {
     // Apply damage
     this.stats.health = Math.max(0, this.stats.health - actualDamage);
     
+    // Play hurt sound
+    this.playSound('playerHurt');
+    
     // Visual feedback
     this.flashRed();
     this.updateHealthBar();
@@ -323,6 +356,20 @@ export class Player extends Phaser.GameObjects.Container {
     }
     
     return actualDamage;
+  }
+
+  /**
+   * Play a sound effect
+   */
+  private playSound(soundName: string): void {
+    const sounds = this.scene.game.registry.get('sounds');
+    if (sounds && sounds[soundName]) {
+      try {
+        sounds[soundName]();
+      } catch (e) {
+        // Audio context might not be ready
+      }
+    }
   }
 
   /**
@@ -450,12 +497,30 @@ export class Player extends Phaser.GameObjects.Container {
    * Update animation based on state
    */
   private updateAnimation(): void {
-    // Simple bob animation when moving
-    if (this.isMoving && !this.isAttacking) {
-      const bobAmount = Math.sin(this.scene.time.now * 0.01) * 2;
-      this.sprite.y = bobAmount;
+    // Use spritesheet animations if available
+    if (this.scene.textures.exists('hero_frame_0') && this.scene.anims.exists('hero_idle')) {
+      const currentAnim = this.sprite.anims.currentAnim?.key;
+      
+      if (this.isAttacking) {
+        // Attack animation handled in attack method
+        return;
+      } else if (this.isMoving) {
+        if (currentAnim !== 'hero_walk') {
+          this.sprite.play('hero_walk');
+        }
+      } else {
+        if (currentAnim !== 'hero_idle' && currentAnim !== 'hero_attack') {
+          this.sprite.play('hero_idle');
+        }
+      }
     } else {
-      this.sprite.y = 0;
+      // Fallback: Simple bob animation when moving
+      if (this.isMoving && !this.isAttacking) {
+        const bobAmount = Math.sin(this.scene.time.now * 0.01) * 2;
+        this.sprite.y = bobAmount - 8;
+      } else {
+        this.sprite.y = -8;
+      }
     }
   }
 

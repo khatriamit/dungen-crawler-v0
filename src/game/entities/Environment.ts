@@ -29,7 +29,7 @@ export class FireTorch extends Phaser.GameObjects.Container {
     this.updateGlow();
     this.add(this.glowCircle);
     
-    // Create flame layers
+    // Programmatic flames
     for (let i = 0; i < 3; i++) {
       const flame = scene.add.graphics();
       flame.setPosition(0, -8 - i * 4);
@@ -44,7 +44,7 @@ export class FireTorch extends Phaser.GameObjects.Container {
   update(): void {
     const time = this.scene.time.now;
     
-    // Animate flames
+    // Animate programmatic flames
     this.flames.forEach((flame, i) => {
       flame.clear();
       const flicker = Math.sin(time * 0.01 + i * 2) * 2;
@@ -524,6 +524,7 @@ export class DenPortal extends Phaser.GameObjects.Container {
     this.glowGraphics.fillStyle(colors.glow, 0.1 * pulse);
     this.glowGraphics.fillCircle(0, -5, 60);
     
+    // Animate particles
     this.particles.forEach((p, i) => {
       const angle = (time * 0.002 + i * (Math.PI * 2 / 6));
       const radius = 15 + Math.sin(time * 0.005 + i) * 5;
@@ -541,6 +542,7 @@ export class DenPortal extends Phaser.GameObjects.Container {
     this.glowGraphics.clear();
     this.particles.forEach(p => p.clear());
     
+    // Draw cleared state
     this.portalGraphics.clear();
     this.portalGraphics.fillStyle(0x2a2a3a);
     this.portalGraphics.fillRect(-25, -30, 8, 50);
@@ -549,6 +551,7 @@ export class DenPortal extends Phaser.GameObjects.Container {
     this.portalGraphics.fillStyle(0x1a1a2a);
     this.portalGraphics.fillEllipse(0, -5, 30, 40);
     
+    // Checkmark
     this.portalGraphics.lineStyle(3, 0x44aa44);
     this.portalGraphics.beginPath();
     this.portalGraphics.moveTo(-8, -5);

@@ -11,6 +11,7 @@ import { DamageResult, GAME_EVENTS } from '../types';
  * - Hit detection
  * - Critical hits
  * - Combat events
+ * - Sound effects
  */
 
 export class CombatSystem {
@@ -23,6 +24,20 @@ export class CombatSystem {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+  }
+
+  /**
+   * Play a sound effect
+   */
+  private playSound(soundName: string): void {
+    const sounds = this.scene.game.registry.get('sounds');
+    if (sounds && sounds[soundName]) {
+      try {
+        sounds[soundName]();
+      } catch (e) {
+        // Audio context might not be ready
+      }
+    }
   }
 
   /**
@@ -65,6 +80,11 @@ export class CombatSystem {
     const attackHitbox = this.player.attack();
     if (!attackHitbox) return;
     
+    // Play attack sound
+    this.playSound('attack');
+    
+    let hitAny = false;
+    
     // Check each enemy for hit
     for (const enemy of this.enemies) {
       if (enemy.getIsDead()) continue;
@@ -80,6 +100,7 @@ export class CombatSystem {
         );
         
         enemy.takeDamage(damage.finalDamage, { x: this.player.x, y: this.player.y });
+        hitAny = true;
         
         // Show damage feedback
         this.showDamageEffect(enemy.x, enemy.y, damage);
@@ -87,6 +108,11 @@ export class CombatSystem {
         // Emit hit event
         this.scene.game.events.emit(GAME_EVENTS.COMBAT_HIT, this.player, enemy, damage);
       }
+    }
+    
+    // Play hit sound if we hit something
+    if (hitAny) {
+      this.playSound('hit');
     }
   }
 

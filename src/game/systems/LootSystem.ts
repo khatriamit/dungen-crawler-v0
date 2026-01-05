@@ -27,6 +27,20 @@ export class LootSystem {
   }
 
   /**
+   * Play a sound effect
+   */
+  private playSound(soundName: string): void {
+    const sounds = this.scene.game.registry.get('sounds');
+    if (sounds && sounds[soundName]) {
+      try {
+        sounds[soundName]();
+      } catch (e) {
+        // Audio context might not be ready
+      }
+    }
+  }
+
+  /**
    * Set player reference
    */
   setPlayer(player: Player): void {
@@ -144,6 +158,9 @@ export class LootSystem {
           item: item.itemData,
           quantity: item.quantity,
         });
+        
+        // Play pickup sound
+        this.playSound('pickup');
         
         // Show pickup text
         this.showPickupText(item);

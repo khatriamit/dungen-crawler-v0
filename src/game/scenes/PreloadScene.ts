@@ -40,19 +40,97 @@ export class PreloadScene extends Phaser.Scene {
     // Load the dungeon sprite sheet
     this.load.image('dungeon_sprites', 'assets/dungeon-sprites.png');
     
+    // Load hero sprite sheet as image (will extract frames manually)
+    this.load.image('hero_sheet_img', 'assets/hero.png');
+    
+    // Load monster sprite sheet as image
+    this.load.image('monster_sheet_img', 'assets/monster.png');
+    
+    // Load goblin sprite sheet as image
+    this.load.image('goblin_sheet_img', 'assets/goblin.png');
+    
+    // Load slime sprite sheet as image
+    this.load.image('slime_sheet_img', 'assets/slime.png');
+    
     this.createPlaceholderAssets();
   }
 
-  async create(): Promise<void> {
-    // Initialize save service
-    await this.initializeServices();
+  create(): void {
+    // Extract hero frames and set up animations
+    this.setupHeroFrames();
+    this.setupHeroAnimations();
     
-    // Simulate loading phases with tips
-    await this.showLoadingPhase('Awakening ancient spirits...', 800);
-    await this.showLoadingPhase('Mapping the dungeons...', 700);
-    await this.showLoadingPhase('Sharpening blades...', 600);
-    await this.showLoadingPhase('Opening the gates...', 500);
+    // Extract monster frames and set up animations
+    this.setupMonsterFrames();
+    this.setupMonsterAnimations();
     
+    // Extract goblin frames and set up animations
+    this.setupGoblinFrames();
+    this.setupGoblinAnimations();
+    
+    // Extract slime frames and set up animations
+    this.setupSlimeFrames();
+    this.setupSlimeAnimations();
+    
+    // Initialize sound system
+    this.initializeSounds();
+    
+    // Initialize save service synchronously (don't wait)
+    try {
+      this.initializeServicesSync();
+    } catch (e) {
+      console.warn('[PreloadScene] Service init error:', e);
+    }
+    
+    // Start loading sequence immediately
+    this.startLoadingSequence();
+  }
+
+  /**
+   * Synchronous service initialization
+   */
+  private initializeServicesSync(): void {
+    try {
+      const stored = localStorage.getItem('dungen_raider_save');
+      if (!stored) {
+        console.log('[PreloadScene] No save found, will create on first play');
+      }
+    } catch (e) {
+      console.warn('[PreloadScene] localStorage not available:', e);
+    }
+  }
+
+  /**
+   * Start the loading sequence after services are initialized
+   */
+  private startLoadingSequence(): void {
+    let phase = 0;
+    const phases = [
+      { text: 'Awakening ancient spirits...', duration: 600 },
+      { text: 'Mapping the dungeons...', duration: 500 },
+      { text: 'Sharpening blades...', duration: 400 },
+      { text: 'Opening the gates...', duration: 400 },
+    ];
+
+    const showNextPhase = () => {
+      if (phase < phases.length) {
+        this.showLoadingPhase(phases[phase].text);
+        this.time.delayedCall(phases[phase].duration, () => {
+          phase++;
+          showNextPhase();
+        });
+      } else {
+        this.showReadyState();
+      }
+    };
+
+    showNextPhase();
+  }
+
+  /**
+   * Show the ready state and wait for input
+   */
+  private showReadyState(): void {
     // Final ready state
     this.loadingText.setText('ENTER THE REALM');
     this.loadingText.setColor('#ffd700');
@@ -87,7 +165,7 @@ export class PreloadScene extends Phaser.Scene {
   /**
    * Show a loading phase with text
    */
-  private async showLoadingPhase(text: string, duration: number): Promise<void> {
+  private showLoadingPhase(text: string): void {
     this.loadingText.setText(text.toUpperCase());
     
     // Show random tip
@@ -102,8 +180,6 @@ export class PreloadScene extends Phaser.Scene {
       yoyo: true,
       repeat: 2,
     });
-
-    await this.delay(duration);
   }
 
   /**
@@ -534,6 +610,558 @@ export class PreloadScene extends Phaser.Scene {
     }
     
     console.log('[PreloadScene] Services initialized');
+  }
+
+  /**
+   * Set up hero character animations from the spritesheet
+   * Spritesheet layout (1536x1024, 8 columns x 3 rows = 192x341 per frame):
+   * Row 0 (frames 0-7): Idle standing poses
+   * Row 1 (frames 8-15): Walking/running animation  
+   * Row 2 (frames 16-23): Sword/shield poses and attack
+   */
+  private setupHeroFrames(): void {
+    const source = this.textures.get('hero_sheet_img').getSourceImage() as HTMLImageElement;
+    if (!source || source.width === 0) {
+      console.warn('[PreloadScene] Hero sprite sheet not loaded');
+      return;
+    }
+
+    // Frame dimensions based on 8 columns x 3 rows
+    const frameW = 192;
+    const frameH = 341;
+    const cols = 8;
+    const rows = 3;
+
+    // Create a canvas-based texture atlas
+    const atlasFrames: Phaser.Types.Textures.SpriteSheetConfig[] = [];
+    
+    // Extract each frame
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const frameIndex = row * cols + col;
+        const x = col * frameW;
+        const y = row * frameH;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = frameW;
+        canvas.height = frameH;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(source, x, y, frameW, frameH, 0, 0, frameW, frameH);
+          this.textures.addCanvas(`hero_frame_${frameIndex}`, canvas);
+        }
+      }
+    }
+    
+    console.log('[PreloadScene] Hero frames extracted: 24');
+  }
+
+  private setupHeroAnimations(): void {
+    // Check if frames exist
+    if (!this.textures.exists('hero_frame_0')) return;
+    if (this.anims.exists('hero_idle')) return;
+    
+    // Idle animation (first 4 frames)
+    this.anims.create({
+      key: 'hero_idle',
+      frames: [
+        { key: 'hero_frame_0' },
+        { key: 'hero_frame_1' },
+        { key: 'hero_frame_2' },
+        { key: 'hero_frame_3' },
+      ],
+      frameRate: 4,
+      repeat: -1,
+    });
+    
+    // Walk/run animation (row 2 - running frames)
+    this.anims.create({
+      key: 'hero_walk',
+      frames: [
+        { key: 'hero_frame_11' },
+        { key: 'hero_frame_12' },
+        { key: 'hero_frame_13' },
+        { key: 'hero_frame_14' },
+        { key: 'hero_frame_15' },
+      ],
+      frameRate: 10,
+      repeat: -1,
+    });
+    
+    // Attack animation (row 3)
+    this.anims.create({
+      key: 'hero_attack',
+      frames: [
+        { key: 'hero_frame_17' },
+        { key: 'hero_frame_18' },
+        { key: 'hero_frame_19' },
+      ],
+      frameRate: 10,
+      repeat: 0,
+    });
+    
+    console.log('[PreloadScene] Hero animations created');
+  }
+
+  /**
+   * Extract monster frames from sprite sheet
+   * Sprite sheet is 612x408 (5 columns x 3 rows)
+   */
+  private setupMonsterFrames(): void {
+    const source = this.textures.get('monster_sheet_img').getSourceImage() as HTMLImageElement;
+    if (!source || source.width === 0) {
+      console.warn('[PreloadScene] Monster sprite sheet not loaded');
+      return;
+    }
+
+    // Frame dimensions: 612/5 = 122.4, 408/3 = 136
+    const frameW = 122;
+    const frameH = 136;
+    const cols = 5;
+    const rows = 3;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const frameIndex = row * cols + col;
+        const x = col * frameW;
+        const y = row * frameH;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = frameW;
+        canvas.height = frameH;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(source, x, y, frameW, frameH, 0, 0, frameW, frameH);
+          this.textures.addCanvas(`monster_frame_${frameIndex}`, canvas);
+        }
+      }
+    }
+    
+    console.log('[PreloadScene] Monster frames extracted: 15');
+  }
+
+  /**
+   * Set up monster animations
+   * Row 0 (0-4): Idle/stance
+   * Row 1 (5-9): Attack/run
+   * Row 2 (10-14): Death
+   */
+  private setupMonsterAnimations(): void {
+    if (!this.textures.exists('monster_frame_0')) return;
+    if (this.anims.exists('monster_idle')) return;
+    
+    // Idle animation
+    this.anims.create({
+      key: 'monster_idle',
+      frames: [
+        { key: 'monster_frame_0' },
+        { key: 'monster_frame_1' },
+        { key: 'monster_frame_2' },
+        { key: 'monster_frame_3' },
+      ],
+      frameRate: 4,
+      repeat: -1,
+    });
+    
+    // Walk/attack animation
+    this.anims.create({
+      key: 'monster_walk',
+      frames: [
+        { key: 'monster_frame_5' },
+        { key: 'monster_frame_6' },
+        { key: 'monster_frame_7' },
+        { key: 'monster_frame_8' },
+      ],
+      frameRate: 8,
+      repeat: -1,
+    });
+    
+    // Attack animation
+    this.anims.create({
+      key: 'monster_attack',
+      frames: [
+        { key: 'monster_frame_5' },
+        { key: 'monster_frame_6' },
+        { key: 'monster_frame_7' },
+      ],
+      frameRate: 10,
+      repeat: 0,
+    });
+    
+    // Death animation
+    this.anims.create({
+      key: 'monster_death',
+      frames: [
+        { key: 'monster_frame_10' },
+        { key: 'monster_frame_11' },
+        { key: 'monster_frame_12' },
+        { key: 'monster_frame_13' },
+        { key: 'monster_frame_14' },
+      ],
+      frameRate: 8,
+      repeat: 0,
+    });
+    
+    console.log('[PreloadScene] Monster animations created');
+  }
+
+  /**
+   * Extract goblin frames from sprite sheet
+   * Sprite sheet is 700x400 (4 columns x 2 rows)
+   */
+  private setupGoblinFrames(): void {
+    const source = this.textures.get('goblin_sheet_img').getSourceImage() as HTMLImageElement;
+    if (!source || source.width === 0) {
+      console.warn('[PreloadScene] Goblin sprite sheet not loaded');
+      return;
+    }
+
+    // Frame dimensions: 700/4 = 175, 400/2 = 200
+    const frameW = 175;
+    const frameH = 200;
+    const cols = 4;
+    const rows = 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const frameIndex = row * cols + col;
+        const x = col * frameW;
+        const y = row * frameH;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = frameW;
+        canvas.height = frameH;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(source, x, y, frameW, frameH, 0, 0, frameW, frameH);
+          this.textures.addCanvas(`goblin_frame_${frameIndex}`, canvas);
+        }
+      }
+    }
+    
+    console.log('[PreloadScene] Goblin frames extracted: 8');
+  }
+
+  /**
+   * Set up goblin animations
+   * Row 0 (0-3): Idle/stance variations
+   * Row 1 (4-7): Walk/attack variations
+   */
+  private setupGoblinAnimations(): void {
+    if (!this.textures.exists('goblin_frame_0')) return;
+    if (this.anims.exists('goblin_idle')) return;
+    
+    // Idle animation
+    this.anims.create({
+      key: 'goblin_idle',
+      frames: [
+        { key: 'goblin_frame_0' },
+        { key: 'goblin_frame_1' },
+        { key: 'goblin_frame_2' },
+        { key: 'goblin_frame_3' },
+      ],
+      frameRate: 4,
+      repeat: -1,
+    });
+    
+    // Walk animation
+    this.anims.create({
+      key: 'goblin_walk',
+      frames: [
+        { key: 'goblin_frame_4' },
+        { key: 'goblin_frame_5' },
+        { key: 'goblin_frame_6' },
+        { key: 'goblin_frame_7' },
+      ],
+      frameRate: 8,
+      repeat: -1,
+    });
+    
+    // Attack animation
+    this.anims.create({
+      key: 'goblin_attack',
+      frames: [
+        { key: 'goblin_frame_4' },
+        { key: 'goblin_frame_5' },
+        { key: 'goblin_frame_6' },
+      ],
+      frameRate: 10,
+      repeat: 0,
+    });
+    
+    console.log('[PreloadScene] Goblin animations created');
+  }
+
+  /**
+   * Extract slime frames from sprite sheet
+   * Sprite sheet is 1536x1024 (4 columns x 2 rows)
+   */
+  private setupSlimeFrames(): void {
+    const source = this.textures.get('slime_sheet_img').getSourceImage() as HTMLImageElement;
+    if (!source || source.width === 0) {
+      console.warn('[PreloadScene] Slime sprite sheet not loaded');
+      return;
+    }
+
+    const frameW = 384;
+    const frameH = 512;
+    const cols = 4;
+    const rows = 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const frameIndex = row * cols + col;
+        const x = col * frameW;
+        const y = row * frameH;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = frameW;
+        canvas.height = frameH;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(source, x, y, frameW, frameH, 0, 0, frameW, frameH);
+          this.textures.addCanvas(`slime_frame_${frameIndex}`, canvas);
+        }
+      }
+    }
+    
+    console.log('[PreloadScene] Slime frames extracted: 8');
+  }
+
+  /**
+   * Set up slime animations
+   * Row 0: Green slime growing/bouncing
+   * Row 1: Green slime variations + blue slime
+   */
+  private setupSlimeAnimations(): void {
+    if (!this.textures.exists('slime_frame_0')) return;
+    if (this.anims.exists('slime_idle')) return;
+    
+    // Slime idle/bounce animation (green)
+    this.anims.create({
+      key: 'slime_idle',
+      frames: [
+        { key: 'slime_frame_0' },
+        { key: 'slime_frame_1' },
+        { key: 'slime_frame_4' },
+        { key: 'slime_frame_5' },
+      ],
+      frameRate: 4,
+      repeat: -1,
+    });
+    
+    // Slime attack/jump (excited animation)
+    this.anims.create({
+      key: 'slime_attack',
+      frames: [
+        { key: 'slime_frame_1' },
+        { key: 'slime_frame_2' },
+        { key: 'slime_frame_3' },
+        { key: 'slime_frame_2' },
+      ],
+      frameRate: 8,
+      repeat: 0,
+    });
+    
+    // Slime walk (same as idle but faster)
+    this.anims.create({
+      key: 'slime_walk',
+      frames: [
+        { key: 'slime_frame_0' },
+        { key: 'slime_frame_1' },
+        { key: 'slime_frame_4' },
+        { key: 'slime_frame_5' },
+      ],
+      frameRate: 8,
+      repeat: -1,
+    });
+    
+    // Blue slime (elite)
+    this.anims.create({
+      key: 'slime_blue_idle',
+      frames: [
+        { key: 'slime_frame_7' },
+      ],
+      frameRate: 1,
+      repeat: -1,
+    });
+    
+    console.log('[PreloadScene] Slime animations created');
+  }
+
+  /**
+   * Initialize game sounds using Web Audio API
+   */
+  private initializeSounds(): void {
+    // Store sound generators in game registry for global access
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Sound effect generators
+    const sounds = {
+      // Sword swing
+      attack: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.1);
+      },
+      
+      // Hit sound
+      hit: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(150, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      },
+      
+      // Enemy death
+      enemyDeath: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+      },
+      
+      // Player hurt
+      playerHurt: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.setValueAtTime(150, ctx.currentTime + 0.05);
+        osc.frequency.setValueAtTime(100, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+      },
+      
+      // Pickup item
+      pickup: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+      },
+      
+      // Portal enter
+      portalEnter: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc2.type = 'triangle';
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
+        osc2.frequency.setValueAtTime(250, ctx.currentTime);
+        osc2.frequency.exponentialRampToValueAtTime(750, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc2.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+        osc2.stop(ctx.currentTime + 0.4);
+      },
+      
+      // Level complete
+      levelComplete: () => {
+        const ctx = audioContext;
+        const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
+          gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.3);
+          osc.start(ctx.currentTime + i * 0.1);
+          osc.stop(ctx.currentTime + i * 0.1 + 0.3);
+        });
+      },
+      
+      // Footstep
+      footstep: () => {
+        const ctx = audioContext;
+        const noise = ctx.createBufferSource();
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        noise.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 500;
+        const gain = ctx.createGain();
+        gain.gain.value = 0.05;
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start();
+      },
+      
+      // UI click
+      uiClick: () => {
+        const ctx = audioContext;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.05);
+      },
+    };
+    
+    // Store in game registry
+    this.game.registry.set('sounds', sounds);
+    this.game.registry.set('audioContext', audioContext);
+    
+    console.log('[PreloadScene] Sound system initialized');
   }
 
   /**
