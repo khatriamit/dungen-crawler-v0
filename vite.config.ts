@@ -15,6 +15,20 @@ export default defineConfig({
     port: 3000,
     open: true,
   },
+  // 1. ADD THIS PLUGINS SECTION
+  plugins: [
+    {
+      name: 'fix-windows-mime-types',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.endsWith('.ts')) {
+            res.setHeader('Content-Type', 'application/javascript');
+          }
+          next();
+        });
+      },
+    },
+  ],
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
